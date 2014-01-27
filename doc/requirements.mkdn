@@ -1,0 +1,52 @@
+
+## Chess
+
+* player needs to be told (on each turn)
+  * position of the board
+  * previous player's move (not absolutely necessary)
+* referee needs to know:
+  * current position of the board
+  * previous move (can only capture en passant if previous move bypassed its
+    third rank)
+  * entire past state
+    * can't castle if K or R have moved previously
+    * automatic draw possible on threefold repetition or fifty moves w/o capture
+* renderer needs to know:
+  * current position of board
+  * previous position of board (if showing moves)
+  * previous player's move (not absolutely necessary)
+
+* never any hidden information
+
+## Go
+
+* exactly like chess?
+  * reasons for some things vary, but all the requirements seem the same
+
+## Tic-Tac-Toe
+
+* player must be told:
+  * position of the board
+  * previous player's move (not absolutely necessary)
+* referee needs to know:
+  * current board state
+* renderer needs to know:
+  * current position of board
+  * previous position of board (if showing moves)
+  * previous player's move (not absolutely necessary)
+* hidden information: none
+
+## Eights
+
+* player must be told:
+  * result of last move
+  * top card on discards
+  * cards in player's hand
+  * number of cards in opponent's hand
+* player must not be told:
+  * cards in opponents' hands
+* referee needs to know:
+  * contents of current player's hand
+  * top of discard pile?
+* other game code needs:
+  * rest of discard pile and draw pile
