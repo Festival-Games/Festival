@@ -1,0 +1,70 @@
+
+# separation of concerns
+
+The main server has storage.  The game servers do not.  They're given the data
+they need on each request, and their responses include udpates that must be
+made in a single transaction.
+
+There are a few storage bins:
+
+* global
+  * players; usernames, prefs, etc
+  * player game summaries; historical and active
+  * player achievements?
+* per-game
+  * game state
+  * game board history
+  * fetch-on-demand data?
+
+
+## tic tac toe
+
+    A -> B:   create new game ( v1, players: [1, 2], ... )
+    B -> A:   store game: board: [], players: { X: 1, O: 2 }, nextplay: 1
+
+    A -> B:   game: { board: [], nextplay: 1 }
+              move: player1, move "a1"
+    B -> A:   new state: board [ X ], move: { player: X, play-at: a1 }
+
+    A -> B:   game: { board: [], nextplay: 2 }
+              move: player1, move "a1"
+    B -> A:   reject: not player 1's turn
+
+    A -> B:   game: { board: [], nextplay: 2 }
+              move: player2, move "a1"
+    B -> A:   reject: space already taken
+
+    A -> B:   game: { board: [], nextplay: 2 }
+              move: player2, move "c3"
+    B -> A:   new state: board [ X, ..., O ], move: { player: O, play-at: c1 }
+
+    ...
+
+## chess
+
+    A -> B:   create new game ( v1, players: [1, 2], ... )
+    B -> A:   store game:
+              board: [...]
+              players: { B: 1, W: 2 }
+              nextplay: 2
+
+    A -> B:   game: { board:..., players:..., nextplay: 2 }
+              move: player 2, move "e2-e4"
+    B -> A:   new state:
+                board: [...]
+                nextplay: 1
+                move: { player: W, move: e2-e4 }
+              increment counter: hash-of-board-position
+              increment counter: move-without-capture
+
+    ...
+
+    A -> B:   game: { board:..., players:..., nextplay: 1 }
+              move: player 1, moves king's rook
+    B -> A:  new state: ...
+             set-true: black-moved-kings-rook
+    ...
+
+    A -> B:   game: { board:..., players:..., nextplay: 1 }
+              move: O-O
+
