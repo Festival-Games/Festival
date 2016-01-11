@@ -1,4 +1,22 @@
 
+# Things The Hub Needs
+
+* list of available games
+* view a player's game standings
+* get your current game status (where's it your turn, what games are you in)
+
+# Things Every Game Needs (Maybe)
+
+* per-player achievements
+* render the board
+* render the board with the last play described
+* undo
+
+* some games will want move preview
+* do we want the multipart move-and-extend-and-commit like SDG's Volcano?
+
+# Specific Games' Needs
+
 ## Chess
 
 * player needs to be told (on each turn)

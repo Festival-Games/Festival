@@ -2,7 +2,7 @@
 # separation of concerns
 
 The main server has storage.  The game servers do not.  They're given the data
-they need on each request, and their responses include udpates that must be
+they need on each request, and their responses include updates that must be
 made in a single transaction.
 
 There are a few storage bins:
@@ -15,7 +15,6 @@ There are a few storage bins:
   * game state
   * game board history
   * fetch-on-demand data?
-
 
 ## tic tac toe
 
