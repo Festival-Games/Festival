@@ -81,14 +81,25 @@ package TTT::Game {
 }
 
 sub ($env) {
-  state $GAME;
-  $GAME = TTT::Game->new if ! $GAME or $GAME->winner;
+  state %GAME;
 
   my $req  = Plack::Request->new($env);
   my $body = $req->raw_body;
   my $move = $body ? $JSON->decode($body) : {};
 
-  my $result = $GAME->play($move->{who}, $move->{where});
+  my $which;
+  if ($req->path_info =~ m{^/([1-9][0-9]*)/?\z}) {
+    $which = $1;
+    $GAME{$which} //= TTT::Game->new;
+  } else {
+    return [
+      404,
+      [ "Content-Type", "application/json" ],
+      [ '{"error":"invalid game id"}' ],
+    ];
+  }
+
+  my $result = $GAME{$which}->play($move->{who}, $move->{where});
   my $status = $result == -1 ? 403 : 200;
 
   my $format = $req->parameters->{format} // 'json';
@@ -97,13 +108,13 @@ sub ($env) {
     return [
       $status,
       [ "Content-Type", "text/plain" ],
-      [ $GAME->as_text ],
+      [ $GAME{$which}->as_text ],
     ];
   } else {
     return [
       $status,
       [ "Content-Type", "application/json" ],
-      [ $GAME->as_json ],
+      [ $GAME{$which}->as_json ],
     ];
   }
 }
