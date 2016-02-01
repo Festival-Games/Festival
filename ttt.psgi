@@ -6,7 +6,6 @@ use Plack::Request;
 
 my $JSON = JSON->new->utf8->canonical;
 
-
 package TTT::Player {
   my %PLAYER;
 
@@ -63,6 +62,12 @@ package TTT::Game {
     return 0;
   }
 
+  sub is_over ($self) {
+    return 1 if $self->winner;
+    return 1 unless grep {; /[0-8]/ } $self->{board}->@*;
+    return;
+  }
+
   sub winner ($self) {
     return $self->{winner} if $self->{winner};
     my $winning_side = sub {
@@ -111,6 +116,8 @@ package TTT::Game {
 
     if (my $winner = $self->winner) {
       $str .= qq{\nThe winner is: $winner\n"};
+    } elsif ($self->is_over) {
+      $str .= qq{\nThe game has ended in a draw.\n"};
     } elsif (my $next = $self->next_player) {
       $str .= qq{\nNext to play is: $next\n};
     } else {
