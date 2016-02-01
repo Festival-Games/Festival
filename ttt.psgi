@@ -73,10 +73,10 @@ package TTT::Game {
         || ($board[0] eq $board[3] && $board[0] eq $board[6]);
 
       return $board[1]
-        if ($board[1] eq $board[4] && $board[0] eq $board[7]);
+        if ($board[1] eq $board[4] && $board[1] eq $board[7]);
 
       return $board[2]
-        if ($board[2] eq $board[4] && $board[0] eq $board[6])
+        if ($board[2] eq $board[4] && $board[2] eq $board[6])
         || ($board[2] eq $board[5] && $board[2] eq $board[8]);
 
       return $board[3]
