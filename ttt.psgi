@@ -213,6 +213,7 @@ package TTT::Web {
     for my $id (keys $self->{games}->%*) {
       my $game = $self->{games}{$id};
       next if $game->winner;
+      next if 2 == keys $game->{players}->%*;
       next if $game->{players}{$username};
       $joinable = $id;
       last;
