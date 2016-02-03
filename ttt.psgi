@@ -18,7 +18,12 @@ package Game::Player {
     return $self;
   }
 
+  sub dump_all ($self) {
+    return { map {; $_ => { $PLAYER{$_}->%* } } keys %PLAYER };
+  }
+
   sub username ($self) { $self->{username} }
+
 
   sub player_named ($self, $name) { $PLAYER{ fc $name } }
 
@@ -30,95 +35,119 @@ package Game::Player {
 }
 
 package TTT::Game {
-  sub new ($class) {
-    bless {
+  sub create_game ($class, $arg) {
+    my $game = {
       next  => 'x',
-      board => [ 0 .. 8 ],
-      players => { },
-    } => $class;
+      board => [ (undef) x 9 ],
+      players => { o => undef, x => undef },
+    };
+
+    my @options = qw(x o);
+    $game->{players}{ $options[ rand @options ] } = $arg->{player_id};
+
+    return {
+      game     => $game,
+      openings => { $game->{players}->%* },
+    };
   }
 
-  sub next_player ($self) {
-    return unless 2 == keys $self->{players}->%*;
+  sub join_game ($class, $arg) {
+    my $game = $arg->{game};
 
-    my ($next) = grep { $self->{players}{$_} eq $self->{next} }
-                 keys $self->{players}->%*;
+    my @options = grep {; ! defined $game->{players}{$_} }
+                  keys $game->{players}->%*;
 
-    return $next;
+    return { error => "game is full" } unless @options;
+
+    $game->{players}{ $options[ rand @options ] } = $arg->{player_id};
+
+    return {
+      game     => $game, # make dumb hash
+      openings => @options > 1 ? { $game->{players}->%* } : undef,
+    };
   }
 
-  sub play ($self, $who, $where) {
-    return -1 if $self->winner;
-    return -1 unless $who and defined $where;
-    return -1 unless $who->username eq $self->next_player;
-    return -1 unless $where =~ /\A[0-8]\z/;
-    return -1 unless $self->{board}[$where] eq $where;
+  sub play ($self, $arg) {
+    my $player = $arg->{player};
+    my $game   = $arg->{game};
+    my $move   = $arg->{move};
+    my $where  = $move->{where};
 
-    $self->{next} = $self->{next} eq 'x' ? 'o' : 'x';
-    $self->{board}[$where] = $self->{players}{ $who->username };
+    return { error => "game is ended" } if $game->{over};
 
-    return 1 if $self->winner;
+    return { error => "game not yet begun" }
+      if grep {; ! defined } values $game->{players}->%*;
 
-    return 0;
+    return { error => "not your turn" }
+      unless $game->{players}{ $game->{next} } eq $player;
+
+    return { error => "bogus play" } unless defined $where && $where =~ /\A[0-8]\z/;
+
+    return { error => "space already claimed" } if defined $game->{board}[$where];
+
+    $game->{board}[$where] = $game->{next};
+    $game->{next} = $game->{next} eq 'x' ? 'o' : 'x';
+
+    if (my $winner = $self->winner($game)) {
+      $game->{winner} = $winner;
+      $game->{over} = 1; # XXX true
+    } elsif (9 == grep {; defined } $game->{board}->@*) {
+      $game->{over} = 1; # XXX true
+    }
+
+    return {
+      game => $game,
+    };
   }
 
-  sub is_over ($self) {
-    return 1 if $self->winner;
-    return 1 unless grep {; /[0-8]/ } $self->{board}->@*;
+  sub winner ($self, $game) {
+    my @board = $game->{board}->@*;
+    return $board[0]
+      if ($board[0] eq $board[1] && $board[0] eq $board[2])
+      || ($board[0] eq $board[4] && $board[0] eq $board[8])
+      || ($board[0] eq $board[3] && $board[0] eq $board[6]);
+
+    return $board[1]
+      if ($board[1] eq $board[4] && $board[1] eq $board[7]);
+
+    return $board[2]
+      if ($board[2] eq $board[4] && $board[2] eq $board[6])
+      || ($board[2] eq $board[5] && $board[2] eq $board[8]);
+
+    return $board[3]
+      if ($board[3] eq $board[4] && $board[3] eq $board[5]);
+
+    return $board[6]
+      if ($board[6] eq $board[7] && $board[6] eq $board[8]);
+
     return;
   }
 
-  sub winner ($self) {
-    return $self->{winner} if $self->{winner};
-    my $winning_side = sub {
-      my @board = $self->{board}->@*;
-      return $board[0]
-        if ($board[0] eq $board[1] && $board[0] eq $board[2])
-        || ($board[0] eq $board[4] && $board[0] eq $board[8])
-        || ($board[0] eq $board[3] && $board[0] eq $board[6]);
-
-      return $board[1]
-        if ($board[1] eq $board[4] && $board[1] eq $board[7]);
-
-      return $board[2]
-        if ($board[2] eq $board[4] && $board[2] eq $board[6])
-        || ($board[2] eq $board[5] && $board[2] eq $board[8]);
-
-      return $board[3]
-        if ($board[3] eq $board[4] && $board[3] eq $board[5]);
-
-      return $board[6]
-        if ($board[6] eq $board[7] && $board[6] eq $board[8]);
-
-      return
-    }->();
+  sub as_json ($self, $game) {
+    $JSON->encode($game);
   }
 
-  sub as_json ($self) {
-    $JSON->encode({ %$self });
-  }
-
-  sub as_text ($self) {
+  sub as_text ($self, $game) {
     my $str = q{};
 
-    my $board = $self->{board};
+    my $board = $game->{board};
     for my $i (0 .. 2) {
       for my $j (0 .. 2) {
         my $c = $i * 3 + $j;
-        $str .= $board->[$c] eq $c ? '.' : $board->[$c];
+        $str .= $board->[$c] // '.';
         $str .= "\n" if $j == 2;
       }
     }
 
-    for my $username (sort keys $self->{players}->%*) {
-      $str .= "$self->{players}{$username}: $username\n";
+    for my $pos (sort keys $game->{players}->%*) {
+      $str .= "$pos: $game->{players}{ $pos }\n";
     }
 
-    if (my $winner = $self->winner) {
+    if (my $winner = $game->{winner}) {
       $str .= qq{\nThe winner is: $winner\n"};
-    } elsif ($self->is_over) {
+    } elsif ($game->{over}) {
       $str .= qq{\nThe game has ended in a draw.\n"};
-    } elsif (my $next = $self->next_player) {
+    } elsif (my $next = $game->{next}) {
       $str .= qq{\nNext to play is: $next\n};
     } else {
       $str .= qq{\nWaiting on players...\n};
@@ -134,7 +163,8 @@ package TTT::Web {
   use List::Util ();
 
   my $router = Router::Simple->new;
-  $router->connect("/game/{game:[1-9][0-9]*}",
+  $router->connect("/dump", { action => 'dumpall' }, { method => 'GET' })
+         ->connect("/game/{game:[1-9][0-9]*}",
                     { action => 'game' }, { method => [ qw( GET PUT ) ] })
          ->connect("/games", { action => 'join_game' }, { method => 'PUT' })
          ->connect("/player/{username:[A-Za-z][0-9A-Za-z]{3,31}}",
@@ -151,7 +181,20 @@ package TTT::Web {
   }
 
   sub new ($class) {
-    bless { games => {} } => $class;
+    my $guts = {
+      games    => {},
+      openings => {},
+    };
+
+    return bless $guts => $class;
+  }
+
+  sub dumpall ($self, $req, $match) {
+    return [
+      200,
+      [ 'Content-type', 'application/json' ],
+      [ $JSON->encode({ player => Game::Player->dump_all, %$self }) ],
+    ];
   }
 
   sub auth ($self, $req) {
@@ -174,6 +217,12 @@ package TTT::Web {
     }
   }
 
+  sub body_data ($self, $req) {
+    my $body = do { local $/; my $handle = $req->body; <$handle> };
+    my $data = $body ? eval { $JSON->decode($body) } : {};
+    return $data;
+  }
+
   sub player ($self, $req, $match) {
     my $player = Game::Player->player_named($match->{username});
 
@@ -184,12 +233,6 @@ package TTT::Web {
       [ 'Content-Type' => 'application/json' ],
       [ $JSON->encode({ username => $player->username }) ],
     ];
-  }
-
-  sub body_data ($self, $req) {
-    my $body = do { local $/; my $handle = $req->body; <$handle> };
-    my $data = $body ? eval { $JSON->decode($body) } : {};
-    return $data;
   }
 
   sub new_player ($self, $req, $match) {
@@ -208,35 +251,62 @@ package TTT::Web {
   sub join_game ($self, $req, $match) {
     return mkerr(403 => "you must authenticate") unless $match->{user};
 
-    my $username = $match->{user}->{username};
+    my $openings = $self->{openings};
+
+    my $uid = $match->{user}->username;
+
     my $joinable;
-    for my $id (keys $self->{games}->%*) {
-      my $game = $self->{games}{$id};
-      next if $game->winner;
-      next if 2 == keys $game->{players}->%*;
-      next if $game->{players}{$username};
+    for my $id (keys %$openings) {
+      next if grep { $_ eq $uid } values $openings->{$id}->%*;
       $joinable = $id;
       last;
     }
 
     unless ($joinable) {
-      my ($max) = sort { $b <=> $a } keys $self->{games}->%*;
-      my $id = defined $max ? $max + 1 : 1;
-      $self->{games}{ $id } = TTT::Game->new;
-      $joinable = $id;
+      my $res = TTT::Game->create_game({
+        player_id => $uid,
+      });
+
+      return $self->process_res(undef, $res);
     }
 
-    my $game = $self->{games}{$joinable};
-    my %has_player = map {; $_ => 1 } values $game->{players}->%*;
-    my @options    = grep {; ! $has_player{$_} } qw(x o);
-    $game->{players}{ $username } = $options[ rand @options ];
+    my $res = TTT::Game->join_game({
+      game      => $self->{games}{$joinable},
+      game_id   => $joinable,
+      player_id => $uid,
+    });
 
-    return $self->_game_res(
-      201,
-      [ Location => "/game/$joinable" ],
-      $req,
-      $game,
-    );
+    return $self->process_res($joinable, $res);
+  }
+
+  sub process_res ($self, $id, $res) {
+    return mkerr(403 => $res->{error}) if $res->{error}; # XXX this is crap
+
+    state $next = 1;
+    $id = $next++ unless defined $id;
+
+    if (defined $res->{openings}) {
+      $self->{openings}{$id} = $res->{openings};
+    } elsif (exists $res->{openings}) {
+      delete $self->{openings}{$id};
+    }
+
+    if (defined $res->{game}) {
+      $self->{games}{$id} = $res->{game};
+    } elsif (exists $res->{game}) {
+      delete $self->{games}{$id};
+      delete $self->{openings}{$id};
+    }
+
+    my $json = $self->{games}{$id}
+             ? TTT::Game->as_json($self->{games}{$id})
+             : '{"ok":true}';
+
+    return [
+      200, # TODO: needs to be determined by response
+      [ "Content-Type" => "application/json" ],
+      [ $json ],
+    ];
   }
 
   sub game ($self, $req, $match) {
@@ -251,8 +321,13 @@ package TTT::Web {
 
       return mkerr(403 => "bogus move") unless $move;
 
-      my $result = $game->play($match->{user}, $move->{where});
-         $status = $result == -1 ? 403 : 200;
+      my $res = TTT::Game->play({
+        game   => $game,
+        player => $match->{user}->username,
+        move   => $move,
+      });
+
+      return $self->process_res($match->{game}, $res);
     }
 
     return $self->_game_res($status, [], $req, $game);
@@ -265,13 +340,13 @@ package TTT::Web {
       return [
         $status,
         [ @$hdr, "Content-Type", "text/plain", ],
-        [ $game->as_text ],
+        [ TTT::Game->as_text($game) ],
       ];
     } else {
       return [
         $status,
         [ @$hdr, "Content-Type", "application/json", ],
-        [ $game->as_json ],
+        [ TTT::Game->as_json($game) ],
       ];
     }
   }
