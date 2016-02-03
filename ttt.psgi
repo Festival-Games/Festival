@@ -6,7 +6,7 @@ use Plack::Request;
 
 my $JSON = JSON->new->utf8->canonical;
 
-package TTT::Player {
+package Game::Player {
   my %PLAYER;
 
   sub new ($class, $username, $password) {
@@ -157,7 +157,7 @@ package TTT::Web {
   sub auth ($self, $req) {
     return unless my $header = $req->header('Authorization');
     my ($username, $password) = split /:/, decode_base64($header), 2;
-    return TTT::Player->login($username, $password);
+    return Game::Player->login($username, $password);
   }
 
   sub app ($self) {
@@ -175,7 +175,7 @@ package TTT::Web {
   }
 
   sub player ($self, $req, $match) {
-    my $player = TTT::Player->player_named($match->{username});
+    my $player = Game::Player->player_named($match->{username});
 
     return mkerr(404 => "no such player") unless $player;
 
@@ -194,7 +194,7 @@ package TTT::Web {
 
   sub new_player ($self, $req, $match) {
     my $profile = $self->body_data($req);
-    my $player  = TTT::Player->new($match->{username}, $profile->{password});
+    my $player  = Game::Player->new($match->{username}, $profile->{password});
 
     return mkerr(403 => "can't create user") unless $player;
 
