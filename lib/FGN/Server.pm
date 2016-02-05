@@ -158,17 +158,18 @@ sub new_player ($self, $req, $match) {
 sub join_game ($self, $req, $match) {
   return mkerr(403 => "you must authenticate") unless $match->{user};
 
-  my $game_handler = $self->{game_handler}->{ $match->{gametype} };
+  my $gametype = $match->{gametype};
+  my $game_handler = $self->{game_handler}->{ $gametype };
 
   return mkerr(404 => "no such game type") unless $game_handler;
 
-  my $openings = $self->{openings};
+  my $openings = $self->{openings}{$gametype};
 
   my $uid = $match->{user}->username;
 
   my $joinable;
   for my $id (keys %$openings) {
-    next if grep { $_ eq $uid } values $openings->{$id}->%*;
+    next if grep { defined && $_ eq $uid } values $openings->{$id}->%*;
     $joinable = $id;
     last;
   }
@@ -178,53 +179,66 @@ sub join_game ($self, $req, $match) {
       player_id => $uid,
     });
 
-    return $self->process_res($game_handler, undef, $res);
+    return $self->process_res($gametype, undef, $res);
   }
 
   my $res = $game_handler->join_game({
-    game      => $self->{games}{$joinable},
+    game      => $self->{games}{ $gametype }{$joinable},
     game_id   => $joinable,
     player_id => $uid,
   });
 
-  return $self->process_res($game_handler, $joinable, $res);
+  return $self->process_res($gametype, $joinable, $res);
 }
 
-sub process_res ($self, $game_handler, $id, $res) {
+sub process_res ($self, $gametype, $id, $res) {
   return mkerr(403 => $res->{error}) if $res->{error}; # XXX this is crap
 
+  my $game_handler = $self->{game_handler}{$gametype};
+  my $game_storage = $self->{games}{$gametype} //= {};
+  my $openings     = $self->{openings}{$gametype} //= {};
+
   state $next = 1;
-  $id = $next++ unless defined $id;
+
+  my $creating;
+  unless (defined $id) {
+    $creating = 1;
+    $id = $next++
+  }
 
   if (defined $res->{openings}) {
-    $self->{openings}{$id} = $res->{openings};
+    $openings->{$id} = $res->{openings};
   } elsif (exists $res->{openings}) {
-    delete $self->{openings}{$id};
+    delete $openings->{$id};
   }
 
   if (defined $res->{game}) {
-    $self->{games}{$id} = $res->{game};
+    $game_storage->{$id} = $res->{game};
   } elsif (exists $res->{game}) {
-    delete $self->{games}{$id};
-    delete $self->{openings}{$id};
+    delete $game_storage->{$id};
+    delete $openings->{$id};
   }
 
-  my $json = $self->{games}{$id}
-           ? $game_handler->as_json($self->{games}{$id})
+  my $json = $game_storage->{$id}
+           ? $game_handler->as_json($game_storage->{$id})
            : '{"ok":true}';
 
   return [
     200, # TODO: needs to be determined by response
-    [ "Content-Type" => "application/json" ],
+    [
+      "Content-Type" => "application/json",
+      ($creating ? (Location => "/game/$gametype/$id") : ()),
+    ],
     [ $json ],
   ];
 }
 
 sub game ($self, $req, $match) {
-  my $game_handler = $self->{game_handler}->{ $match->{gametype} };
+  my $gametype = $match->{gametype};
+  my $game_handler = $self->{game_handler}->{ $gametype };
   return mkerr(404 => "no such game type") unless $game_handler;
 
-  my $game = $self->{games}{ $match->{game_id} };
+  my $game = $self->{games}{$gametype}{ $match->{game_id} };
 
   return mkerr(404 => "no such game") unless $game;
 
@@ -241,7 +255,7 @@ sub game ($self, $req, $match) {
       move   => $move,
     });
 
-    return $self->process_res($game_handler, $match->{game_id}, $res);
+    return $self->process_res($gametype, $match->{game_id}, $res);
   }
 
   return $self->_game_res($game_handler, $status, [], $req, $game);
