@@ -3,6 +3,7 @@ package FGN::Server;
 
 use JSON ();
 use Plack::Request;
+use Path::Tiny;
 
 my $JSON = JSON->new->utf8->canonical;
 
@@ -77,7 +78,9 @@ sub new ($class, $arg) {
   my $self = {
     games    => {},
     openings => {},
-    game_handler => $arg->{game_handler} // {}, # having no handlers is silly
+
+    storage_filename => "fgn.json",
+    game_handler     => $arg->{game_handler} // {}, # having no handlers is silly
   };
 
   bless $self => $class;
@@ -155,6 +158,20 @@ sub new_player ($self, $req, $match) {
   ];
 }
 
+sub _get_storage ($self) {
+  my $file = $self->{storage_filename};
+  my $content = -e $file ? `cat $file` : "{}";
+
+  $JSON->decode($content);
+}
+
+sub _save_storage ($self, $storage) {
+  my $file = $self->{storage_filename};
+  my $json = $JSON->encode($storage);
+  path($file)->spew($json);
+  return;
+}
+
 sub join_game ($self, $req, $match) {
   return mkerr(403 => "you must authenticate") unless $match->{user};
 
@@ -163,7 +180,9 @@ sub join_game ($self, $req, $match) {
 
   return mkerr(404 => "no such game type") unless $game_handler;
 
-  my $openings = $self->{openings}{$gametype};
+  my $storage = $self->_get_storage;
+
+  my $openings = $storage->{openings}{$gametype};
 
   my $uid = $match->{user}->username;
 
@@ -183,7 +202,7 @@ sub join_game ($self, $req, $match) {
   }
 
   my $res = $game_handler->join_game({
-    game      => $self->{games}{ $gametype }{$joinable},
+    game      => $storage->{games}{ $gametype }{$joinable},
     game_id   => $joinable,
     player_id => $uid,
   });
@@ -194,9 +213,11 @@ sub join_game ($self, $req, $match) {
 sub process_res ($self, $gametype, $id, $res) {
   return mkerr(403 => $res->{error}) if $res->{error}; # XXX this is crap
 
+  my $storage = $self->_get_storage;
+
   my $game_handler = $self->{game_handler}{$gametype};
-  my $game_storage = $self->{games}{$gametype} //= {};
-  my $openings     = $self->{openings}{$gametype} //= {};
+  my $game_storage = $storage->{games}{$gametype} //= {};
+  my $openings     = $storage->{openings}{$gametype} //= {};
 
   state $next = 1;
 
@@ -223,6 +244,8 @@ sub process_res ($self, $gametype, $id, $res) {
            ? $game_handler->as_json($game_storage->{$id})
            : '{"ok":true}';
 
+  $self->_save_storage($storage);
+
   return [
     200, # TODO: needs to be determined by response
     [
@@ -238,7 +261,8 @@ sub game ($self, $req, $match) {
   my $game_handler = $self->{game_handler}->{ $gametype };
   return mkerr(404 => "no such game type") unless $game_handler;
 
-  my $game = $self->{games}{$gametype}{ $match->{game_id} };
+  my $storage = $self->_get_storage;
+  my $game = $storage->{games}{$gametype}{ $match->{game_id} };
 
   return mkerr(404 => "no such game") unless $game;
 
