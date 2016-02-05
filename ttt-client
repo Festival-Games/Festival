@@ -12,8 +12,8 @@ my $JSON = JSON::PP->new;
 my $ua   = LWP::UserAgent->new;
 
 my $config;
-if (-e "ttt-user") {
-  $config = $JSON->decode(scalar `cat ttt-user`);
+if (-e "user.json") {
+  $config = $JSON->decode(scalar `cat user.json`);
 
   my $user_res = $ua->get("$config->{root}/player/$config->{username}");
   unless ($user_res->is_success) {
@@ -48,27 +48,29 @@ if (-e "ttt-user") {
   die "failed" unless $res->is_success;
 
   my $json = $JSON->encode($config);
-  path("ttt-user")->spew_utf8($json);
+  path("user.json")->spew_utf8($json);
   exit(0);
 }
 
-$config = $JSON->decode( path("ttt-user")->slurp_utf8 );
+my $gametype = shift @ARGV;
+
+$config = $JSON->decode( path("user.json")->slurp_utf8 );
 
 my $auth = encode_base64( "$config->{username}:$config->{password}" );
 $ua->default_header(Authorization => $auth);
 
 if ($ARGV[0] eq 'join') {
   my $res = $ua->put(
-    "$config->{root}/game/ttt/games",
+    "$config->{root}/game/$gametype/games",
     Content => "{}",
   );
 
   die "failed to join" unless $res->is_success;
   say "Location: " . $res->header('Location');
 } elsif ($ARGV[0] =~ /\A[1-9][0-9]*\z/) {
-  if (@ARGV == 2 && $ARGV[1] =~ /\A[0-8]\z/) {
+  if (@ARGV == 2) {
     my $res = $ua->put(
-      "$config->{root}/game/ttt/$ARGV[0]?format=text",
+      "$config->{root}/game/$gametype/$ARGV[0]?format=text",
       Content => $JSON->encode({ where => $ARGV[1] }),
     );
 
@@ -78,7 +80,7 @@ if ($ARGV[0] eq 'join') {
       say "failed to move: " . $res->decoded_content;
     }
   } else {
-    my $res = $ua->get("$config->{root}/game/ttt/$ARGV[0]?format=text");
+    my $res = $ua->get("$config->{root}/game/$gametype/$ARGV[0]?format=text");
 
     if ($res->is_success) {
       say $res->decoded_content;

@@ -1,14 +1,15 @@
 use rjbs;
-package FGN::Game::TTT;
+package FGN::Game::Oware;
 
 use JSON;
 my $JSON = JSON->new->utf8->canonical;
 
 sub create_game ($class, $arg) {
   my $game = {
-    next  => 'x',
-    board => [ (undef) x 9 ],
-    players => { o => undef, x => undef },
+    next  => 'n',
+    board => [ (4) x 12 ],
+    score => { n => 0, s => 0 },
+    players => { n => undef, s => undef },
   };
 
   my @options = keys $game->{players}->%*;
@@ -36,6 +37,9 @@ sub join_game ($class, $arg) {
   };
 }
 
+my %INDEX = ( f => 11, e => 10, d =>  9, c =>  8, b =>  7, a =>  6,
+              A =>  0, B =>  1, C =>  2, D =>  3, E =>  4, F =>  5 );
+
 sub play ($self, $arg) {
   my $player = $arg->{player};
   my $game   = $arg->{game};
@@ -50,17 +54,36 @@ sub play ($self, $arg) {
   return { error => "not your turn" }
     unless $game->{players}{ $game->{next} } eq $player;
 
-  return { error => "bogus play" } unless defined $where && $where =~ /\A[0-8]\z/;
+  return { error => "bogus play" }
+    unless defined $where && $where =~ /\A[A-Fa-f]\z/;
 
-  return { error => "space already claimed" } if defined $game->{board}[$where];
+  my $index = $INDEX{ $where };
 
-  $game->{board}[$where] = $game->{next};
-  $game->{next} = $game->{next} eq 'x' ? 'o' : 'x';
+  return { error => "that's not your cup!" }
+    if ($game->{next} eq 'n' && $index < 6)
+    || ($game->{next} eq 's' && $index > 5);
 
-  if (my $winner = $self->winner($game)) {
-    $game->{winner} = $winner;
-    $game->{over} = 1; # XXX true
-  } elsif (9 == grep {; defined } $game->{board}->@*) {
+  my $board = $game->{board};
+  my $n = $board->[$index];
+
+  return { error => "cup $where is empty" } unless $n > 0;
+
+  my $pos = $index;
+  while ($n--) {
+    $pos = ($pos + 1) % 12;
+    $board->[$pos]++;
+  }
+
+  # XXX simplified rules because testing -- rjbs, 2016-02-05
+  if ($board->[$pos] == 3 or $board->[$pos] == 2) {
+    $game->{score}{ $game->{next} } += $board->[$pos];
+    $board->[$pos] = 0;
+  }
+
+  $game->{next} = $game->{next} eq 'n' ? 's' : 'n';
+
+  if ($game->{score} > 10) {
+    $game->{winner} = $player;
     $game->{over} = 1; # XXX true
   }
 
@@ -69,45 +92,18 @@ sub play ($self, $arg) {
   };
 }
 
-sub winner ($self, $game) {
-  my @board = $game->{board}->@*;
-  no warnings 'uninitialized';
-  return $board[0]
-    if ($board[0] eq $board[1] && $board[0] eq $board[2])
-    || ($board[0] eq $board[4] && $board[0] eq $board[8])
-    || ($board[0] eq $board[3] && $board[0] eq $board[6]);
-
-  return $board[1]
-    if ($board[1] eq $board[4] && $board[1] eq $board[7]);
-
-  return $board[2]
-    if ($board[2] eq $board[4] && $board[2] eq $board[6])
-    || ($board[2] eq $board[5] && $board[2] eq $board[8]);
-
-  return $board[3]
-    if ($board[3] eq $board[4] && $board[3] eq $board[5]);
-
-  return $board[6]
-    if ($board[6] eq $board[7] && $board[6] eq $board[8]);
-
-  return;
-}
-
 sub as_json ($self, $game) {
   $JSON->encode($game);
 }
 
 sub as_text ($self, $game) {
-  my $str = q{};
-
   my $board = $game->{board};
-  for my $i (0 .. 2) {
-    for my $j (0 .. 2) {
-      my $c = $i * 3 + $j;
-      $str .= $board->[$c] // '.';
-      $str .= "\n" if $j == 2;
-    }
-  }
+  my $str   = q{};
+
+  $str .= "f  e  d  c  b  a\n";
+  $str .= sprintf "%-2i %-2i %-2i %-2i %-2i %-2i\n", $board->@[ 11, 10, 9, 8, 7, 6 ];
+  $str .= sprintf "%-2i %-2i %-2i %-2i %-2i %-2i\n", $board->@[  0,  1, 2, 3, 4, 5 ];
+  $str .= "A  B  C  D  E  F\n";
 
   for my $pos (sort keys $game->{players}->%*) {
     my $player = $game->{players}{$pos} // '(nobody)';
@@ -116,8 +112,6 @@ sub as_text ($self, $game) {
 
   if (my $winner = $game->{winner}) {
     $str .= qq{\nThe winner is: $winner\n};
-  } elsif ($game->{over}) {
-    $str .= qq{\nThe game has ended in a draw.\n};
   } elsif (my $next = $game->{next}) {
     $str .= qq{\nNext to play is: $next\n};
   } else {
