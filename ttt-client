@@ -59,7 +59,7 @@ $ua->default_header(Authorization => $auth);
 
 if ($ARGV[0] eq 'join') {
   my $res = $ua->put(
-    "$config->{root}/games",
+    "$config->{root}/game/ttt/games",
     Content => "{}",
   );
 
@@ -68,7 +68,7 @@ if ($ARGV[0] eq 'join') {
 } elsif ($ARGV[0] =~ /\A[1-9][0-9]*\z/) {
   if (@ARGV == 2 && $ARGV[1] =~ /\A[0-8]\z/) {
     my $res = $ua->put(
-      "$config->{root}/game/$ARGV[0]?format=text",
+      "$config->{root}/game/ttt/$ARGV[0]?format=text",
       Content => $JSON->encode({ where => $ARGV[1] }),
     );
 
@@ -78,7 +78,7 @@ if ($ARGV[0] eq 'join') {
       say "failed to move: " . $res->decoded_content;
     }
   } else {
-    my $res = $ua->get("$config->{root}/game/$ARGV[0]?format=text");
+    my $res = $ua->get("$config->{root}/game/ttt/$ARGV[0]?format=text");
 
     if ($res->is_success) {
       say $res->decoded_content;
