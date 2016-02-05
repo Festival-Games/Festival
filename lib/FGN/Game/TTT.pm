@@ -110,13 +110,14 @@ sub as_text ($self, $game) {
   }
 
   for my $pos (sort keys $game->{players}->%*) {
-    $str .= "$pos: $game->{players}{ $pos }\n";
+    my $player = $game->{players}{$pos} // '(nobody)';
+    $str .= "$pos: $player\n";
   }
 
   if (my $winner = $game->{winner}) {
-    $str .= qq{\nThe winner is: $winner\n"};
+    $str .= qq{\nThe winner is: $winner\n};
   } elsif ($game->{over}) {
-    $str .= qq{\nThe game has ended in a draw.\n"};
+    $str .= qq{\nThe game has ended in a draw.\n};
   } elsif (my $next = $game->{next}) {
     $str .= qq{\nNext to play is: $next\n};
   } else {
