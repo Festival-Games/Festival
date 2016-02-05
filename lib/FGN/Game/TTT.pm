@@ -71,6 +71,7 @@ sub play ($self, $arg) {
 
 sub winner ($self, $game) {
   my @board = $game->{board}->@*;
+  no warnings 'uninitialized';
   return $board[0]
     if ($board[0] eq $board[1] && $board[0] eq $board[2])
     || ($board[0] eq $board[4] && $board[0] eq $board[8])
