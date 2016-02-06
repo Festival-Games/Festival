@@ -60,8 +60,10 @@ sub play ($self, $arg) {
   if (my $winner = $self->winner($game)) {
     $game->{winner} = $winner;
     $game->{over} = 1; # XXX true
+    delete $game->{next};
   } elsif (9 == grep {; defined } $game->{board}->@*) {
     $game->{over} = 1; # XXX true
+    delete $game->{next};
   }
 
   return {

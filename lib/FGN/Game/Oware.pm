@@ -85,6 +85,7 @@ sub play ($self, $arg) {
   if ($game->{score} > 10) {
     $game->{winner} = $player;
     $game->{over} = 1; # XXX true
+    delete $game->{next};
   }
 
   return {
