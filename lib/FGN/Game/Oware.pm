@@ -4,7 +4,20 @@ package FGN::Game::Oware;
 use JSON;
 my $JSON = JSON->new->utf8->canonical;
 
+sub error ($msg) {
+  return { result => { error => $msg } };
+}
+
+sub _renderer_for ($class, $arg) {
+  return 'as_text' if $arg->{format} // 'text' eq 'text';
+  return 'as_json' if $arg->{format} eq 'json';
+  return;
+}
+
 sub create_game ($class, $arg) {
+  return error("can't render requested format")
+    unless my $method = $class->_renderer_for($arg);
+
   my $game = {
     next  => 'n',
     board => [ (4) x 12 ],
@@ -16,57 +29,69 @@ sub create_game ($class, $arg) {
   $game->{players}{ $options[ rand @options ] } = $arg->{player_id};
 
   return {
-    game     => $game,
-    openings => { $game->{players}->%* },
+    result => $class->$method($game),
+    update => {
+      game     => $game,
+      openings => { $game->{players}->%* },
+    },
   };
 }
 
 sub join_game ($class, $arg) {
+  return error("can't render requested format")
+    unless my $method = $class->_renderer_for($arg);
+
   my $game = $arg->{game};
 
   my @options = grep {; ! defined $game->{players}{$_} }
                 keys $game->{players}->%*;
 
-  return { error => "game is full" } unless @options;
+  return error("game is full") unless @options;
 
   $game->{players}{ $options[ rand @options ] } = $arg->{player_id};
 
   return {
-    game     => $game, # make dumb hash
-    openings => @options > 1 ? { $game->{players}->%* } : undef,
+    result => $class->$method($game),
+    update => {
+      game     => $game,
+      openings => @options > 1 ? { $game->{players}->%* } : undef,
+    },
   };
 }
 
 my %INDEX = ( f => 11, e => 10, d =>  9, c =>  8, b =>  7, a =>  6,
               A =>  0, B =>  1, C =>  2, D =>  3, E =>  4, F =>  5 );
 
-sub play ($self, $arg) {
-  my $player = $arg->{player};
+sub play ($class, $arg) {
+  return error("can't render requested format")
+    unless my $method = $class->_renderer_for($arg);
+
+  my $player = $arg->{player_id};
   my $game   = $arg->{game};
   my $move   = $arg->{move};
   my $where  = $move->{where};
 
-  return { error => "game is ended" } if $game->{over};
+  return error("game is ended") if $game->{over};
 
-  return { error => "game not yet begun" }
+  return error("game not yet begun")
     if grep {; ! defined } values $game->{players}->%*;
 
-  return { error => "not your turn" }
+  return error("not your turn")
     unless $game->{players}{ $game->{next} } eq $player;
 
-  return { error => "bogus play" }
+  return error("bogus play")
     unless defined $where && $where =~ /\A[A-Fa-f]\z/;
 
   my $index = $INDEX{ $where };
 
-  return { error => "that's not your cup!" }
+  return error("that's not your cup!")
     if ($game->{next} eq 'n' && $index < 6)
     || ($game->{next} eq 's' && $index > 5);
 
   my $board = $game->{board};
   my $n = $board->[$index];
 
-  return { error => "cup $where is empty" } unless $n > 0;
+  return error("cup $where is empty") unless $n > 0;
 
   my $pos = $index;
   while ($n--) {
@@ -89,15 +114,19 @@ sub play ($self, $arg) {
   }
 
   return {
-    game => $game,
+    result => $class->$method($game),
+    update => {
+      game => $game,
+    },
   };
 }
 
-sub as_json ($self, $game) {
-  $JSON->encode($game);
+sub as_json ($class, $game) {
+  my $json = $JSON->encode($game);
+  return { ok => 1, content_type => 'application/json', content => $json };
 }
 
-sub as_text ($self, $game) {
+sub as_text ($class, $game) {
   my $board = $game->{board};
   my $str   = q{};
 
@@ -119,7 +148,7 @@ sub as_text ($self, $game) {
     $str .= qq{\nWaiting on players...\n};
   }
 
-  return $str;
+  return { ok => 1, content_type => 'text/plain', content => $str };
 }
 
 1;

@@ -196,22 +196,25 @@ sub join_game ($self, $req, $match) {
   unless ($joinable) {
     my $res = $game_handler->create_game({
       player_id => $uid,
+      format    => $req->parameters->{format} // 'json',
     });
 
-    return $self->process_res($gametype, undef, $res);
+    return $self->process_res($gametype, undef, $req, $res);
   }
 
   my $res = $game_handler->join_game({
     game      => $storage->{games}{ $gametype }{$joinable},
     game_id   => $joinable,
     player_id => $uid,
+    format    => $req->parameters->{format} // 'json',
   });
 
-  return $self->process_res($gametype, $joinable, $res);
+  return $self->process_res($gametype, $joinable, $req, $res);
 }
 
-sub process_res ($self, $gametype, $id, $res) {
-  return mkerr(403 => $res->{error}) if $res->{error}; # XXX this is crap
+sub process_res ($self, $gametype, $id, $req, $res) {
+  my ($result, $update) = $res->@{ qw(result update) };
+  return mkerr(403 => $result->{error}) if $result->{error};
 
   my $storage = $self->_get_storage;
 
@@ -221,38 +224,34 @@ sub process_res ($self, $gametype, $id, $res) {
 
   state $next = 1;
 
-  my $creating;
   unless (defined $id) {
-    $creating = 1;
     $id = $next++
   }
 
-  if (defined $res->{openings}) {
-    $openings->{$id} = $res->{openings};
-  } elsif (exists $res->{openings}) {
+  if (defined $update->{openings}) {
+    $openings->{$id} = $update->{openings};
+  } elsif (exists $update->{openings}) {
     delete $openings->{$id};
   }
 
-  if (defined $res->{game}) {
-    $game_storage->{$id} = $res->{game};
-  } elsif (exists $res->{game}) {
+  if (defined $update->{game}) {
+    $game_storage->{$id} = $update->{game};
+  } elsif (exists $update->{game}) {
     delete $game_storage->{$id};
     delete $openings->{$id};
   }
 
-  my $json = $game_storage->{$id}
-           ? $game_handler->as_json($game_storage->{$id})
-           : '{"ok":true}';
-
   $self->_save_storage($storage);
+
+  my $give_loc = $req->method eq 'POST' || $req->method eq 'PUT';
 
   return [
     200, # TODO: needs to be determined by response
     [
-      "Content-Type" => "application/json",
-      ($creating ? (Location => "/game/$gametype/$id") : ()),
+      "Content-Type" => $result->{content_type},
+      ($give_loc ? (Location => "/game/$gametype/$id") : ()),
     ],
-    [ $json ],
+    [ $result->{content} ],
   ];
 }
 
@@ -274,31 +273,40 @@ sub game ($self, $req, $match) {
     return mkerr(403 => "bogus move") unless $move;
 
     my $res = $game_handler->play({
-      game   => $game,
-      player => $match->{user}->username,
-      move   => $move,
+      game      => $game,
+      player_id => $match->{user}->username,
+      move      => $move,
+      format    => $req->parameters->{format} // 'json',
     });
 
-    return $self->process_res($gametype, $match->{game_id}, $res);
+    return $self->process_res($gametype, $match->{game_id}, $req, $res);
   }
 
-  return $self->_game_res($game_handler, $status, [], $req, $game);
+  if ($req->method eq 'GET') {
+    return $self->_game_res($game_handler, $status, $req, $game);
+  }
+
+  return [
+    405,
+    [ "Content-Type", "application/json" ],
+    [ '{"error":"only GET or POST allowed"}' ],
+  ];
 }
 
-sub _game_res ($self, $game_handler, $status, $hdr, $req, $game) {
+sub _game_res ($self, $game_handler, $status, $req, $game) {
   my $format = $req->parameters->{format} // 'json';
 
   if ($format eq 'text') {
     return [
       $status,
-      [ @$hdr, "Content-Type", "text/plain", ],
-      [ $game_handler->as_text($game) ],
+      [ "Content-Type", "text/plain", ],
+      [ $game_handler->as_text($game)->{content} ],
     ];
   } else {
     return [
       $status,
-      [ @$hdr, "Content-Type", "application/json", ],
-      [ $game_handler->as_json($game) ],
+      [ "Content-Type", "application/json", ],
+      [ $game_handler->as_json($game)->{content} ],
     ];
   }
 }
