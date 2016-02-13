@@ -1,0 +1,91 @@
+#!/usr/bin/perl
+use 5.18.0;
+use warnings;
+
+use JSON::PP;
+use LWP::UserAgent;
+use MIME::Base64;
+use Path::Tiny;
+
+my $JSON = JSON::PP->new;
+
+my $ua   = LWP::UserAgent->new;
+
+my $config;
+if (-e "user.json") {
+  $config = $JSON->decode(scalar `cat user.json`);
+
+  my $user_res = $ua->get("$config->{root}/player/$config->{username}");
+  unless ($user_res->is_success) {
+    say "user $config->{username} does not exist at $config->{root}";
+    print "press enter to re-create it";
+    scalar <STDIN>;
+
+    my $res = $ua->put(
+      "$config->{root}/player/$config->{username}",
+      Content => $JSON->encode({ password => $config->{password} }),
+    );
+
+    die "failed" unless $res->is_success;
+  }
+} else {
+  my ($root, $username, $password) = @ARGV;
+  print "press enter to create user $username at $root";
+  scalar <STDIN>;
+  $root =~ s{/\z}{}g;
+
+  my $config = {
+    root     => $root,
+    username => $username,
+    password => $password,
+  };
+
+  my $res = $ua->put(
+    "$root/player/$username",
+    Content => $JSON->encode({ password => $password }),
+  );
+
+  die "failed" unless $res->is_success;
+
+  my $json = $JSON->encode($config);
+  path("user.json")->spew_utf8($json);
+  exit(0);
+}
+
+my $gametype = shift @ARGV;
+
+$config = $JSON->decode( path("user.json")->slurp_utf8 );
+
+my $auth = encode_base64( "$config->{username}:$config->{password}" );
+$ua->default_header(Authorization => $auth);
+
+if ($ARGV[0] eq 'join') {
+  my $res = $ua->put(
+    "$config->{root}/game/$gametype/games",
+    Content => "{}",
+  );
+
+  die "failed to join" unless $res->is_success;
+  say "Location: " . $res->header('Location');
+} elsif ($ARGV[0] =~ /\A[1-9][0-9]*\z/) {
+  if (@ARGV == 2) {
+    my $res = $ua->put(
+      "$config->{root}/game/$gametype/$ARGV[0]?format=text",
+      Content => $JSON->encode({ where => $ARGV[1] }),
+    );
+
+    if ($res->is_success) {
+      say $res->decoded_content;
+    } else {
+      say "failed to move: " . $res->decoded_content;
+    }
+  } else {
+    my $res = $ua->get("$config->{root}/game/$gametype/$ARGV[0]?format=text");
+
+    if ($res->is_success) {
+      say $res->decoded_content;
+    } else {
+      say "failed to get game: " . $res->decoded_content;
+    }
+  }
+}
