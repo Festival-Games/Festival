@@ -25,7 +25,6 @@ package Game::Player {
 
   sub username ($self) { $self->{username} }
 
-
   sub player_named ($self, $name) { $PLAYER{ fc $name } }
 
   sub login ($class, $username, $password) {
