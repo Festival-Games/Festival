@@ -37,6 +37,7 @@ package Game::Player {
 use MIME::Base64;
 use Router::Simple;
 use List::Util ();
+use LWP::UserAgent;
 
 sub _build_router {
   my ($self) = @_;
@@ -75,11 +76,13 @@ sub mkerr ($err, $desc) {
 
 sub new ($class, $arg) {
   my $self = {
+    ua => LWP::UserAgent->new,
+
     games    => {},
     openings => {},
+    game_url => $arg->{game_url} // {}, # having no game servers is silly
 
     storage_filename => "fgn.json",
-    game_handler     => $arg->{game_handler} // {}, # having no handlers is silly
   };
 
   bless $self => $class;
@@ -171,13 +174,36 @@ sub _save_storage ($self, $storage) {
   return;
 }
 
+sub _game_request ($self, $game, $method, $path, $arg) {
+  my $ua     = $self->{ua};
+  my $server = $self->{game_url}{$game};
+     $server =~ s{/\z}{};
+  my $url    = "$server/$path";
+
+  my $res;
+  if ($method eq 'GET') {
+    warn "args provided on GET request for $url";
+    $res = $ua->get($path);
+  } else {
+    my $method = lc $method;
+    my $json   = $JSON->encode($arg);
+    $res = $ua->$method($url,
+      'Content-Type' => 'application/json',
+      Content => $json,
+    );
+  }
+
+  die "didn't get back JSON"
+    unless my $data = eval { $JSON->decode( $res->decoded_content ); };
+
+  return $data;
+}
+
 sub join_game ($self, $req, $match) {
   return mkerr(403 => "you must authenticate") unless $match->{user};
 
   my $gametype = $match->{gametype};
-  my $game_handler = $self->{game_handler}->{ $gametype };
-
-  return mkerr(404 => "no such game type") unless $game_handler;
+  return mkerr(404 => "no such game type") unless $self->{game_url}{$gametype};
 
   my $storage = $self->_get_storage;
 
@@ -193,7 +219,7 @@ sub join_game ($self, $req, $match) {
   }
 
   unless ($joinable) {
-    my $res = $game_handler->create_game({
+    my $res = $self->_game_request($gametype => POST => 'create-game' => {
       player_id => $uid,
       format    => $req->parameters->{format} // 'json',
     });
@@ -201,7 +227,7 @@ sub join_game ($self, $req, $match) {
     return $self->process_res($gametype, undef, $req, $res);
   }
 
-  my $res = $game_handler->join_game({
+  my $res = $self->_game_request($gametype => POST => 'join-game' => {
     game      => $storage->{games}{ $gametype }{$joinable},
     game_id   => $joinable,
     player_id => $uid,
@@ -217,7 +243,6 @@ sub process_res ($self, $gametype, $id, $req, $res) {
 
   my $storage = $self->_get_storage;
 
-  my $game_handler = $self->{game_handler}{$gametype};
   my $game_storage = $storage->{games}{$gametype} //= {};
   my $openings     = $storage->{openings}{$gametype} //= {};
 
@@ -256,8 +281,7 @@ sub process_res ($self, $gametype, $id, $req, $res) {
 
 sub game ($self, $req, $match) {
   my $gametype = $match->{gametype};
-  my $game_handler = $self->{game_handler}->{ $gametype };
-  return mkerr(404 => "no such game type") unless $game_handler;
+  return mkerr(404 => "no such game type") unless $self->{game_url}{$gametype};
 
   my $storage = $self->_get_storage;
   my $game = $storage->{games}{$gametype}{ $match->{game_id} };
@@ -271,7 +295,7 @@ sub game ($self, $req, $match) {
 
     return mkerr(403 => "bogus move") unless $move;
 
-    my $res = $game_handler->play({
+    my $res = $self->_game_request($gametype, POST => move => {
       game      => $game,
       player_id => $match->{user}->username,
       move      => $move,
@@ -282,7 +306,13 @@ sub game ($self, $req, $match) {
   }
 
   if ($req->method eq 'GET') {
-    return $self->_game_res($game_handler, $status, $req, $game);
+    my $res = $self->_game_request($gametype, POST => render => {
+      game      => $game,
+      player_id => $match->{user}->username,
+      format    => $req->parameters->{format} // 'json',
+    });
+
+    return $self->process_res($gametype, $match->{game_id}, $req, $res);
   }
 
   return [
@@ -290,24 +320,6 @@ sub game ($self, $req, $match) {
     [ "Content-Type", "application/json" ],
     [ '{"error":"only GET or POST allowed"}' ],
   ];
-}
-
-sub _game_res ($self, $game_handler, $status, $req, $game) {
-  my $format = $req->parameters->{format} // 'json';
-
-  if ($format eq 'text') {
-    return [
-      $status,
-      [ "Content-Type", "text/plain", ],
-      [ $game_handler->as_text($game)->{content} ],
-    ];
-  } else {
-    return [
-      $status,
-      [ "Content-Type", "application/json", ],
-      [ $game_handler->as_json($game)->{content} ],
-    ];
-  }
 }
 
 1;

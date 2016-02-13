@@ -1,5 +1,6 @@
 use rjbs;
 package FGN::Game::Oware;
+use parent 'FGN::Game::Generic';
 
 use JSON;
 my $JSON = JSON->new->utf8->canonical;
@@ -34,6 +35,15 @@ sub create_game ($class, $arg) {
       game     => $game,
       openings => { $game->{players}->%* },
     },
+  };
+}
+
+sub render ($class, $arg) {
+  return error("can't render requested format")
+    unless my $method = $class->_renderer_for($arg);
+
+  return {
+    result => $class->$method($arg->{game}),
   };
 }
 

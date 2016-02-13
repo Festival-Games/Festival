@@ -7,9 +7,9 @@ use FGN::Game::Oware;
 use FGN::Game::TTT;
 
 my $server = FGN::Server->new({
-  game_handler => {
-    oware => 'FGN::Game::Oware',
-    ttt   => 'FGN::Game::TTT',
+  game_url => {
+    oware => 'http://localhost:5002',
+    ttt   => 'http://localhost:5001',
   },
 });
 
