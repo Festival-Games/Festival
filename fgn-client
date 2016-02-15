@@ -30,6 +30,10 @@ if (-e "user.json") {
   }
 } else {
   my ($root, $username, $password) = @ARGV;
+  unless ($root && $username && $password) {
+    die "First time usage: $0 <Server URL> <username> <password>\n";
+  }
+
   print "press enter to create user $username at $root";
   scalar <STDIN>;
   $root =~ s{/\z}{}g;
@@ -45,7 +49,7 @@ if (-e "user.json") {
     Content => $JSON->encode({ password => $password }),
   );
 
-  die "failed" unless $res->is_success;
+  die "failed: " . $res->decoded_content unless $res->is_success;
 
   my $json = $JSON->encode($config);
   path("user.json")->spew_utf8($json);
