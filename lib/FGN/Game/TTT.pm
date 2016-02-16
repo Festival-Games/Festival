@@ -28,6 +28,12 @@ sub create_game ($class, $arg) {
   my @options = keys $game->{players}->%*;
   $game->{players}{ $options[ rand @options ] } = $arg->{player_id};
 
+  # 'openings' is a hash of player names to slots, undef means the slot is available.
+  # This is used by FGN::Server to decide what game a user can join
+  #
+  # Ex:
+  #
+  # openings => { player1 => $args->{player_id}, player2 => undef, player3 => undef },
   return {
     result => $class->$method($game),
     update => {
@@ -56,14 +62,15 @@ sub join_game ($class, $arg) {
                 keys $game->{players}->%*;
 
   return error("game is full") unless @options;
-
+ 
+  # Stick that player in an available slot at random
   $game->{players}{ $options[ rand @options ] } = $arg->{player_id};
 
   return {
     result => $class->$method($game),
     update => {
       game     => $game, # make dumb hash
-      openings => @options > 1 ? { $game->{players}->%* } : undef,
+      openings => @options > 1 ? { $game->{players}->%* } : undef, # No more available slots, just return undef
     }
   };
 }
