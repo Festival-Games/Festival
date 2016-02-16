@@ -33,7 +33,7 @@ sub create_game ($class, $arg) {
   #
   # Ex:
   #
-  # openings => { player1 => $args->{player_id}, player2 => undef, player3 => undef },
+  # openings => { player1 => $arg->{player_id}, player2 => undef, player3 => undef },
   return {
     result => $class->$method($game),
     update => {
